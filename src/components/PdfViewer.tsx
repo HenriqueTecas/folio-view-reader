@@ -1,12 +1,12 @@
-
 import React, { useEffect, useRef, useState } from "react";
 import { toast } from "@/hooks/use-toast";
 import * as pdfjsLib from "pdfjs-dist";
 import "pdfjs-dist/web/pdf_viewer.css";
-import { ZoomIn, ZoomOut, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { ZoomIn, ZoomOut, Search } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
+import { AnnotationToolbar, AnnotationTool } from "./AnnotationToolbar";
+import { AnnotationCanvas } from "./AnnotationCanvas";
 
 // Worker setup for PDF.js
 pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -26,6 +26,11 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ file }) => {
   const [searchText, setSearchText] = useState("");
   const [fileName, setFileName] = useState("");
   const [documentMetadata, setDocumentMetadata] = useState<any>(null);
+  const [selectedTool, setSelectedTool] = useState<AnnotationTool>(null);
+  const [brushSize, setBrushSize] = useState(5);
+  const [brushColor, setBrushColor] = useState("#8B5CF6");
+  const [brushOpacity, setBrushOpacity] = useState(1);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Load PDF on file change
   useEffect(() => {
@@ -154,46 +159,78 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ file }) => {
         <div className="text-sm text-center font-medium text-gray-800 truncate max-w-md">
           {fileName}
         </div>
-        <Popover>
-          <PopoverTrigger asChild>
-            <button
-              className="p-2 rounded-full hover:bg-gray-100 transition"
-              title="Document information"
-            >
-              <Search className="h-5 w-5 text-gray-700" />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent className="w-80">
-            <div className="space-y-2">
-              <h3 className="font-medium">Document Information</h3>
-              <div className="text-sm">
-                <p><strong>File name:</strong> {fileName}</p>
-                <p><strong>Pages:</strong> {numPages}</p>
-                {documentMetadata && documentMetadata.info && (
-                  <>
-                    {documentMetadata.info.Title && <p><strong>Title:</strong> {documentMetadata.info.Title}</p>}
-                    {documentMetadata.info.Author && <p><strong>Author:</strong> {documentMetadata.info.Author}</p>}
-                    {documentMetadata.info.CreationDate && (
-                      <p><strong>Creation Date:</strong> {documentMetadata.info.CreationDate}</p>
-                    )}
-                  </>
-                )}
+        <div className="flex items-center gap-2">
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                className="p-2 rounded-full hover:bg-gray-100 transition"
+                title="Document information"
+              >
+                <Search className="h-5 w-5 text-gray-700" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80">
+              <div className="space-y-2">
+                <h3 className="font-medium">Document Information</h3>
+                <div className="text-sm">
+                  <p><strong>File name:</strong> {fileName}</p>
+                  <p><strong>Pages:</strong> {numPages}</p>
+                  {documentMetadata && documentMetadata.info && (
+                    <>
+                      {documentMetadata.info.Title && <p><strong>Title:</strong> {documentMetadata.info.Title}</p>}
+                      {documentMetadata.info.Author && <p><strong>Author:</strong> {documentMetadata.info.Author}</p>}
+                      {documentMetadata.info.CreationDate && (
+                        <p><strong>Creation Date:</strong> {documentMetadata.info.CreationDate}</p>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          </PopoverContent>
-        </Popover>
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
 
-      <div className="canvas-container relative overflow-auto max-h-[70vh] w-full flex justify-center bg-gray-100 rounded-lg">
-        <canvas
-          ref={canvasRef}
-          className="shadow-lg rounded bg-white"
-        />
-        {loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-white/50">
-            <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-300 border-t-blue-600"></div>
+      <div className="w-full flex gap-4">
+        <div className="w-64 flex-shrink-0">
+          <AnnotationToolbar
+            selectedTool={selectedTool}
+            onToolSelect={setSelectedTool}
+            brushSize={brushSize}
+            onBrushSizeChange={setBrushSize}
+            brushColor={brushColor}
+            onBrushColorChange={setBrushColor}
+            opacity={brushOpacity}
+            onOpacityChange={setBrushOpacity}
+          />
+        </div>
+
+        <div className="flex-1">
+          <div 
+            ref={containerRef}
+            className="canvas-container relative overflow-auto max-h-[70vh] w-full flex justify-center bg-gray-100 rounded-lg"
+          >
+            <canvas
+              ref={canvasRef}
+              className="shadow-lg rounded bg-white"
+            />
+            {canvasRef.current && (
+              <AnnotationCanvas
+                width={canvasRef.current.width}
+                height={canvasRef.current.height}
+                tool={selectedTool}
+                color={brushColor}
+                size={brushSize}
+                opacity={brushOpacity}
+              />
+            )}
+            {loading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-white/50">
+                <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-300 border-t-blue-600"></div>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       <div className="w-full mt-4">
