@@ -1,12 +1,14 @@
+
 import React, { useEffect, useRef, useState } from "react";
 import { toast } from "@/hooks/use-toast";
 import * as pdfjsLib from "pdfjs-dist";
 import "pdfjs-dist/web/pdf_viewer.css";
-import { ZoomIn, ZoomOut, Search } from "lucide-react";
+import { ZoomIn, ZoomOut, Search, Maximize, Minimize } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 import { AnnotationToolbar, AnnotationTool } from "./AnnotationToolbar";
 import { AnnotationCanvas } from "./AnnotationCanvas";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 // Worker setup for PDF.js
 pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -22,7 +24,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ file }) => {
   const [pageNumber, setPageNumber] = useState(1);
   const [numPages, setNumPages] = useState<number>(1);
   const [loading, setLoading] = useState(true);
-  const [scale, setScale] = useState(1.5);
+  const [scale, setScale] = useState(1.0);
   const [searchText, setSearchText] = useState("");
   const [fileName, setFileName] = useState("");
   const [documentMetadata, setDocumentMetadata] = useState<any>(null);
@@ -31,6 +33,8 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ file }) => {
   const [brushColor, setBrushColor] = useState("#8B5CF6");
   const [brushOpacity, setBrushOpacity] = useState(1);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const isMobile = useIsMobile();
 
   // Load PDF on file change
   useEffect(() => {
@@ -38,6 +42,10 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ file }) => {
     setLoading(true);
     setPdf(null);
     setFileName(file.name);
+
+    // Auto-adjust initial scale based on device
+    const initialScale = isMobile ? 0.8 : 1.0;
+    setScale(initialScale);
 
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -66,8 +74,40 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ file }) => {
       setPdf(null);
       objectUrl && URL.revokeObjectURL(objectUrl);
     };
-    // eslint-disable-next-line
-  }, [file]);
+  }, [file, isMobile]);
+
+  // Calculate optimal scale
+  useEffect(() => {
+    if (!pdf || !containerRef.current) return;
+    
+    const calculateOptimalScale = async () => {
+      const page = await pdf.getPage(pageNumber);
+      const viewport = page.getViewport({ scale: 1 });
+      const containerWidth = containerRef.current?.clientWidth || window.innerWidth;
+      const containerHeight = containerRef.current?.clientHeight || window.innerHeight * 0.7;
+      
+      const scaleX = (containerWidth - 40) / viewport.width;
+      const scaleY = (containerHeight - 40) / viewport.height;
+      
+      // Use the smaller value to ensure it fits both dimensions
+      const optimalScale = Math.min(scaleX, scaleY);
+      
+      // Only update if significantly different to avoid re-render loop
+      if (Math.abs(optimalScale - scale) > 0.1) {
+        setScale(optimalScale);
+      }
+    };
+    
+    calculateOptimalScale();
+    
+    // Add resize listener to recalculate on window size change
+    const handleResize = () => calculateOptimalScale();
+    window.addEventListener('resize', handleResize);
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [pdf, pageNumber, containerRef.current]);
 
   // Render PDF page
   useEffect(() => {
@@ -92,17 +132,22 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ file }) => {
 
   // Zoom in function
   const zoomIn = () => {
-    setScale((prevScale) => Math.min(prevScale + 0.25, 3));
+    setScale((prevScale) => Math.min(prevScale + 0.2, 3));
   };
 
   // Zoom out function
   const zoomOut = () => {
-    setScale((prevScale) => Math.max(prevScale - 0.25, 0.5));
+    setScale((prevScale) => Math.max(prevScale - 0.2, 0.3));
+  };
+
+  // Toggle fullscreen mode
+  const toggleFullscreen = () => {
+    setIsFullscreen(!isFullscreen);
   };
 
   // Generate page buttons for pagination
   const getPageButtons = () => {
-    const maxVisibleButtons = 5;
+    const maxVisibleButtons = isMobile ? 3 : 5;
     const buttons = [];
     
     let startPage = Math.max(1, pageNumber - Math.floor(maxVisibleButtons / 2));
@@ -138,7 +183,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ file }) => {
 
   return (
     <div className="w-full flex flex-col items-center">
-      <div className="w-full flex items-center justify-between mb-4">
+      <div className={`w-full flex ${isMobile ? 'flex-wrap' : ''} items-center justify-between mb-4`}>
         <div className="flex items-center gap-2">
           <button
             onClick={zoomOut}
@@ -155,11 +200,22 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ file }) => {
           >
             <ZoomIn className="h-5 w-5 text-gray-700" />
           </button>
+          <button
+            onClick={toggleFullscreen}
+            className="p-2 rounded-full hover:bg-gray-100 transition"
+            title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          >
+            {isFullscreen ? (
+              <Minimize className="h-5 w-5 text-gray-700" />
+            ) : (
+              <Maximize className="h-5 w-5 text-gray-700" />
+            )}
+          </button>
         </div>
-        <div className="text-sm text-center font-medium text-gray-800 truncate max-w-md">
+        <div className={`text-sm text-center font-medium text-gray-800 truncate ${isMobile ? 'w-full mt-2' : 'max-w-md'}`}>
           {fileName}
         </div>
-        <div className="flex items-center gap-2">
+        <div className={`flex items-center gap-2 ${isMobile ? 'w-full justify-end mt-2' : ''}`}>
           <Popover>
             <PopoverTrigger asChild>
               <button
@@ -191,8 +247,8 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ file }) => {
         </div>
       </div>
 
-      <div className="w-full flex gap-4">
-        <div className="w-64 flex-shrink-0">
+      <div className={`w-full flex ${isMobile ? 'flex-col' : 'flex-row'} gap-4`}>
+        <div className={`${isMobile ? 'w-full' : 'w-64'} flex-shrink-0`}>
           <AnnotationToolbar
             selectedTool={selectedTool}
             onToolSelect={setSelectedTool}
@@ -205,10 +261,10 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ file }) => {
           />
         </div>
 
-        <div className="flex-1">
+        <div className={`flex-1 ${isFullscreen ? 'fixed top-0 left-0 w-screen h-screen z-50 bg-gray-100 flex items-center justify-center p-4' : ''}`}>
           <div 
             ref={containerRef}
-            className="canvas-container relative overflow-auto max-h-[70vh] w-full flex justify-center bg-gray-100 rounded-lg"
+            className={`canvas-container relative overflow-auto ${isFullscreen ? 'h-full w-full' : 'max-h-[60vh]'} w-full flex justify-center bg-gray-100 rounded-lg`}
           >
             <canvas
               ref={canvasRef}
@@ -233,7 +289,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ file }) => {
         </div>
       </div>
 
-      <div className="w-full mt-4">
+      <div className={`w-full mt-4 ${isFullscreen ? 'fixed bottom-4 left-0 px-4' : ''}`}>
         <Pagination>
           <PaginationContent>
             <PaginationItem>
