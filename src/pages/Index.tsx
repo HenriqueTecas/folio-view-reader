@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect } from "react";
 import PdfViewer from "@/components/PdfViewer";
 import { toast } from "@/hooks/use-toast";
@@ -217,29 +216,37 @@ const Index = () => {
             {/* Document Browser Interface */}
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
-                <Command className="rounded-lg border shadow-sm">
-                  <CommandInput 
-                    placeholder="Search documents and tags..." 
-                    value={searchQuery}
-                    onValueChange={setSearchQuery}
-                  />
-                  {searchQuery && (
-                    <CommandList>
-                      <CommandEmpty>No results found</CommandEmpty>
-                      <CommandGroup>
-                        {filteredDocuments.map(doc => (
-                          <CommandItem 
-                            key={doc.id}
-                            onSelect={() => openDocument(doc)}
-                          >
-                            <FileIcon className="mr-2 h-4 w-4" />
-                            {doc.name}
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
+                <div className="rounded-lg border shadow-sm w-64">
+                  <div className="flex items-center border-b px-3">
+                    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                    <input
+                      type="text"
+                      placeholder="Search documents and tags..."
+                      className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                  </div>
+                  {searchQuery && filteredDocuments.length > 0 && (
+                    <ul className="max-h-[300px] overflow-y-auto p-1">
+                      {filteredDocuments.map(doc => (
+                        <li 
+                          key={doc.id}
+                          onClick={() => openDocument(doc)}
+                          className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground"
+                        >
+                          <FileIcon className="mr-2 h-4 w-4" />
+                          {doc.name}
+                        </li>
+                      ))}
+                    </ul>
                   )}
-                </Command>
+                  {searchQuery && filteredDocuments.length === 0 && (
+                    <div className="py-6 text-center text-sm">
+                      No results found
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <button
