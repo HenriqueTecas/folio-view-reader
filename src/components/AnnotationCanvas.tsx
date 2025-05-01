@@ -1,6 +1,6 @@
-
 import React, { useRef, useEffect, useState } from "react";
 import { AnnotationTool } from "./AnnotationToolbar";
+import { cn } from "@/lib/utils";
 
 interface Point {
   x: number;
@@ -29,7 +29,6 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
   const [lastPoint, setLastPoint] = useState<Point | null>(null);
   const [startPoint, setStartPoint] = useState<Point | null>(null);
   const [textInputPosition, setTextInputPosition] = useState<Point | null>(null);
-  const [textContent, setTextContent] = useState<string>("");
   
   // Effect to set up canvas context when props change
   useEffect(() => {
@@ -92,16 +91,43 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
   // Create text input for text annotations
   const handleTextTool = (point: Point) => {
     if (tool === "text") {
-      const text = prompt("Enter your comment:", "");
+      // Use a more modern prompt for comments
+      const text = prompt("Add a comment:", "");
       if (text) {
         const canvas = canvasRef.current;
         const context = canvas?.getContext("2d");
         if (!context || !canvas) return;
         
-        context.font = `${size * 2}px Arial`;
+        // Enhanced text styling
+        context.font = `${size * 2}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
         context.fillStyle = color;
         context.globalAlpha = opacity;
-        context.fillText(text, point.x, point.y);
+        
+        // Draw a nice comment bubble
+        const padding = 8;
+        const textMetrics = context.measureText(text);
+        const textWidth = textMetrics.width;
+        const textHeight = size * 2;
+        const bubbleWidth = textWidth + padding * 2;
+        const bubbleHeight = textHeight + padding * 2;
+        
+        // Draw background bubble
+        context.globalAlpha = 0.1;
+        context.fillStyle = color;
+        context.beginPath();
+        context.roundRect(point.x, point.y - textHeight, bubbleWidth, bubbleHeight, 8);
+        context.fill();
+        
+        // Draw border
+        context.globalAlpha = 0.5;
+        context.strokeStyle = color;
+        context.lineWidth = 1;
+        context.stroke();
+        
+        // Draw text
+        context.globalAlpha = opacity;
+        context.fillStyle = color;
+        context.fillText(text, point.x + padding, point.y - padding);
         
         setTextInputPosition(null);
         setIsDrawing(false);
@@ -113,15 +139,40 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
         const context = canvas?.getContext("2d");
         if (!context || !canvas) return;
         
-        // Draw sticky note background
+        // Draw sticky note background with improved styling
         context.fillStyle = "#FFEB3B"; // Yellow background
-        context.globalAlpha = 0.8;
+        context.globalAlpha = 0.9;
         const noteWidth = Math.max(150, note.length * 7);
         const noteHeight = 100;
-        context.fillRect(point.x, point.y, noteWidth, noteHeight);
         
-        // Draw note text
-        context.font = "14px Arial";
+        // Draw a shadow for depth
+        context.shadowColor = 'rgba(0, 0, 0, 0.2)';
+        context.shadowBlur = 8;
+        context.shadowOffsetX = 2;
+        context.shadowOffsetY = 2;
+        
+        // Draw rounded corners for the sticky note
+        context.beginPath();
+        context.roundRect(point.x, point.y, noteWidth, noteHeight, 6);
+        context.fill();
+        
+        // Reset shadow
+        context.shadowColor = 'transparent';
+        context.shadowBlur = 0;
+        context.shadowOffsetX = 0;
+        context.shadowOffsetY = 0;
+        
+        // Draw a slight fold in the top right corner
+        context.beginPath();
+        context.moveTo(point.x + noteWidth - 15, point.y);
+        context.lineTo(point.x + noteWidth, point.y + 15);
+        context.lineTo(point.x + noteWidth, point.y);
+        context.closePath();
+        context.fillStyle = "#E6D335";
+        context.fill();
+        
+        // Draw note text with better typography
+        context.font = "14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
         context.fillStyle = "#000000";
         context.globalAlpha = 1;
         
@@ -168,12 +219,25 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
       case "brush":
       case "highlighter":
       case "eraser":
-        // Freehand drawing
+        // Freehand drawing with smoother lines
         context.beginPath();
         context.moveTo(lastPoint.x, lastPoint.y);
+        
+        // For smoother lines, use quadratic curves
+        const midPoint = {
+          x: (lastPoint.x + newPoint.x) / 2,
+          y: (lastPoint.y + newPoint.y) / 2
+        };
+        
+        context.quadraticCurveTo(lastPoint.x, lastPoint.y, midPoint.x, midPoint.y);
+        context.stroke();
+        
+        context.beginPath();
+        context.moveTo(midPoint.x, midPoint.y);
         context.lineTo(newPoint.x, newPoint.y);
         context.stroke();
         break;
+        
       case "rectangle":
       case "circle":
       case "arrow":
@@ -233,8 +297,9 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
     const width = end.x - start.x;
     const height = end.y - start.y;
     
+    // Draw with rounded corners for a modern look
     context.beginPath();
-    context.rect(start.x, start.y, width, height);
+    context.roundRect(start.x, start.y, width, height, 4);
     context.stroke();
   };
 
@@ -263,28 +328,29 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
     const dy = end.y - start.y;
     const angle = Math.atan2(dy, dx);
     
-    // Draw line
+    // Draw line with improved styling
     context.beginPath();
     context.moveTo(start.x, start.y);
     context.lineTo(end.x, end.y);
     context.stroke();
     
-    // Draw arrowhead
+    // Draw arrowhead with smoother shape
     context.beginPath();
     context.moveTo(end.x, end.y);
     context.lineTo(
-      end.x - headLength * Math.cos(angle - Math.PI / 7),
-      end.y - headLength * Math.sin(angle - Math.PI / 7)
+      end.x - headLength * Math.cos(angle - Math.PI / 6),
+      end.y - headLength * Math.sin(angle - Math.PI / 6)
     );
     context.lineTo(
-      end.x - headLength * Math.cos(angle + Math.PI / 7),
-      end.y - headLength * Math.sin(angle + Math.PI / 7)
+      end.x - headLength * 0.8 * Math.cos(angle),
+      end.y - headLength * 0.8 * Math.sin(angle)
+    );
+    context.lineTo(
+      end.x - headLength * Math.cos(angle + Math.PI / 6),
+      end.y - headLength * Math.sin(angle + Math.PI / 6)
     );
     context.lineTo(end.x, end.y);
-    context.lineTo(
-      end.x - headLength * Math.cos(angle - Math.PI / 7),
-      end.y - headLength * Math.sin(angle - Math.PI / 7)
-    );
+    context.closePath();
     
     // Fill the arrowhead
     context.fillStyle = context.strokeStyle;
@@ -296,7 +362,10 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
       ref={canvasRef}
       width={width}
       height={height}
-      className="absolute top-0 left-0 pointer-events-auto"
+      className={cn(
+        "absolute top-0 left-0 pointer-events-auto",
+        tool ? "cursor-crosshair" : "cursor-default"
+      )}
       style={{ touchAction: "none" }}
       onMouseDown={startDrawing}
       onMouseMove={draw}
