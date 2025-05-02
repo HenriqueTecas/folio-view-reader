@@ -1,4 +1,5 @@
-import React, { useState, useCallback } from "react";
+
+import React, { useState, useCallback, useEffect } from "react";
 import PdfViewer from "@/components/PdfViewer";
 import { toast } from "@/hooks/use-toast";
 import { 
@@ -15,7 +16,9 @@ import {
   Info,
   Share2,
   MoreVertical,
-  ChevronRight
+  ChevronRight,
+  Clock,
+  Save
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -30,6 +33,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { getAllDocumentMetadata, saveDocumentMetadata } from "@/lib/annotationStore";
 
 // Type definitions for our document system
 type DocumentType = "pdf" | "image" | "document" | "other";
@@ -50,9 +54,17 @@ interface FolderItem {
   parentId: string | null;
 }
 
+// Interface for persisted document metadata
+interface PersistedDocument {
+  id: string;
+  name: string;
+  lastAccessed: Date;
+}
+
 const Index = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [persistedDocuments, setPersistedDocuments] = useState<PersistedDocument[]>([]);
   const [folders, setFolders] = useState<FolderItem[]>([
     { id: "root", name: "My Documents", parentId: null }
   ]);
@@ -62,6 +74,19 @@ const Index = () => {
   const [availableTags, setAvailableTags] = useState<string[]>(["important", "work", "personal"]);
   const [dragActive, setDragActive] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
+  const [showRecent, setShowRecent] = useState(true);
+
+  // Load persisted documents on initial render
+  useEffect(() => {
+    const loadPersistedDocuments = () => {
+      const documentMetadata = getAllDocumentMetadata();
+      setPersistedDocuments(documentMetadata.sort((a, b) => 
+        new Date(b.lastAccessed).getTime() - new Date(a.lastAccessed).getTime()
+      ));
+    };
+    
+    loadPersistedDocuments();
+  }, []);
 
   // Filter documents by current folder and search query
   const filteredDocuments = documents.filter(doc => {
@@ -104,9 +129,19 @@ const Index = () => {
       return;
     }
     
+    // Generate a unique ID for the document
+    const documentId = generateId();
+    
+    // Save document metadata to localStorage
+    saveDocumentMetadata({
+      id: documentId,
+      name: file.name,
+      lastAccessed: new Date()
+    });
+    
     // Add document to our document array
     const newDocument: DocumentItem = {
-      id: generateId(),
+      id: documentId,
       name: file.name,
       type: "pdf",
       file,
@@ -117,6 +152,13 @@ const Index = () => {
     
     setDocuments(prev => [...prev, newDocument]);
     setSelectedFile(file);
+    
+    // Update persisted documents list
+    setPersistedDocuments(prev => [{
+      id: documentId,
+      name: file.name,
+      lastAccessed: new Date()
+    }, ...prev]);
     
     toast({
       title: "File uploaded",
@@ -151,6 +193,13 @@ const Index = () => {
   // Open a document
   const openDocument = (doc: DocumentItem) => {
     setSelectedFile(doc.file);
+    
+    // Update last accessed time
+    saveDocumentMetadata({
+      id: doc.id,
+      name: doc.name,
+      lastAccessed: new Date()
+    });
   };
   
   // Add tag to document
@@ -203,6 +252,7 @@ const Index = () => {
   // Navigate to folder
   const navigateToFolder = (folderId: string) => {
     setCurrentFolder(folderId);
+    setShowRecent(false);
   };
   
   // Helper function to generate random IDs
@@ -225,6 +275,17 @@ const Index = () => {
     }).format(date);
   };
 
+  // Manual save function
+  const handleManualSave = () => {
+    import('@/lib/annotationStore').then(({ saveAnnotationsToStorage }) => {
+      saveAnnotationsToStorage();
+      toast({
+        title: "Saved",
+        description: "Your annotations have been saved.",
+      });
+    });
+  };
+
   const renderDocumentViewer = () => (
     <div className="bg-white shadow-xl rounded-lg overflow-hidden transition-all">
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 px-4 flex items-center justify-between">
@@ -241,6 +302,15 @@ const Index = () => {
         </div>
         
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-white hover:bg-white/20"
+            title="Save"
+            onClick={handleManualSave}
+          >
+            <Save className="h-5 w-5" />
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -373,151 +443,54 @@ const Index = () => {
         </div>
       </div>
       
-      {/* Breadcrumb Navigation */}
-      <div className="flex items-center mb-5 text-sm bg-gray-50 -mx-6 px-6 py-2">
-        <div className="flex items-center gap-1 flex-wrap">
-          {breadcrumbPath.map((folder, index) => (
-            <React.Fragment key={folder.id}>
-              <button
-                onClick={() => navigateToFolder(folder.id)}
-                className={cn(
-                  "hover:text-blue-600 flex items-center",
-                  index === breadcrumbPath.length - 1 
-                    ? "font-medium text-blue-600" 
-                    : "text-gray-600"
-                )}
-              >
-                {index === 0 && <Folder className="h-4 w-4 mr-1" />}
-                {folder.name}
-              </button>
-              {index < breadcrumbPath.length - 1 && (
-                <ChevronRight className="h-4 w-4 text-gray-400 mx-1" />
-              )}
-            </React.Fragment>
-          ))}
-        </div>
-      </div>
-      
-      {/* File Drop Zone */}
-      <div
-        className={cn(
-          "border-2 border-dashed transition-all rounded-lg flex flex-col items-center justify-center py-10 cursor-pointer mb-6",
-          dragActive 
-            ? "border-blue-500 bg-blue-50" 
-            : "border-gray-300 hover:bg-gray-50 hover:border-gray-400"
-        )}
-        onDrop={handleDrop}
-        onDragEnter={handleDrag}
-        onDragOver={handleDrag}
-        onDragLeave={handleDrag}
-        onClick={() => {
-          const input = document.getElementById("pdf-upload");
-          input && input.click();
-        }}
-      >
-        <div className="w-14 h-14 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mb-3">
-          <Upload className="w-7 h-7" />
-        </div>
-        <span className="text-lg text-gray-700 font-medium">
-          Drag & drop a PDF here
-        </span>
-        <p className="text-sm text-gray-500 mt-1">
-          or <span className="text-blue-600 hover:underline">browse</span> from your device
-        </p>
-        <input
-          id="pdf-upload"
-          type="file"
-          accept="application/pdf"
-          style={{ display: "none" }}
-          onChange={handleFileInput}
-        />
-      </div>
-      
-      {/* Document and Folder List */}
-      <div>
-        {currentSubfolders.length === 0 && filteredDocuments.length === 0 && (
-          <div className="text-center py-16 bg-gray-50 rounded-lg">
-            <Info className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-            <p className="text-gray-600 font-medium">This folder is empty</p>
-            <p className="text-gray-500 text-sm mt-1">
-              Upload documents or create a new folder to get started
-            </p>
-          </div>
-        )}
+      {/* Navigation Tabs */}
+      <Tabs defaultValue={showRecent ? "recent" : "browser"} className="mb-6">
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger 
+            value="recent" 
+            onClick={() => setShowRecent(true)}
+          >
+            <Clock className="h-4 w-4 mr-2" />
+            Recent Documents
+          </TabsTrigger>
+          <TabsTrigger 
+            value="browser"
+            onClick={() => setShowRecent(false)}
+          >
+            <Folder className="h-4 w-4 mr-2" />
+            File Browser
+          </TabsTrigger>
+        </TabsList>
         
-        {/* Folders */}
-        {currentSubfolders.length > 0 && (
-          <div className="mb-8">
-            <h3 className="text-sm font-medium text-gray-500 mb-3 flex items-center">
-              <Folder className="h-4 w-4 mr-1" />
-              Folders
-            </h3>
-            <div className={viewMode === "grid" 
-              ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" 
-              : "space-y-2"
-            }>
-              {currentSubfolders.map(folder => (
-                <Card 
-                  key={folder.id}
-                  onClick={() => navigateToFolder(folder.id)}
-                  className={cn(
-                    "cursor-pointer hover:border-blue-300 transition-colors overflow-hidden group",
-                    viewMode === "list" && "border-0 shadow-none"
-                  )}
-                >
-                  <CardContent className={cn(
-                    "p-0",
-                    viewMode === "grid" 
-                      ? "flex flex-col items-center pt-6 pb-4"
-                      : "flex items-center p-3 hover:bg-gray-50 rounded-lg"
-                  )}>
-                    <div className={cn(
-                      "bg-amber-50 text-amber-600 rounded-lg flex items-center justify-center",
-                      viewMode === "grid" ? "w-16 h-16 mb-3" : "w-10 h-10 mr-3"
-                    )}>
-                      <Folder className={viewMode === "grid" ? "h-8 w-8" : "h-5 w-5"} />
-                    </div>
-                    <div className={viewMode === "grid" ? "text-center" : "flex-1"}>
-                      <div className="font-medium truncate max-w-full">{folder.name}</div>
-                      {viewMode === "list" && (
-                        <div className="text-gray-500 text-xs">Folder</div>
-                      )}
-                    </div>
-                    {viewMode === "list" && (
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
+        <TabsContent value="recent" className="mt-4">
+          {persistedDocuments.length === 0 ? (
+            <div className="text-center py-16 bg-gray-50 rounded-lg">
+              <Info className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+              <p className="text-gray-600 font-medium">No recent documents</p>
+              <p className="text-gray-500 text-sm mt-1">
+                Upload a document to get started
+              </p>
             </div>
-          </div>
-        )}
-        
-        {/* Documents */}
-        {filteredDocuments.length > 0 && (
-          <div>
-            <h3 className="text-sm font-medium text-gray-500 mb-3 flex items-center">
-              <FileText className="h-4 w-4 mr-1" />
-              Documents
-            </h3>
+          ) : (
             <div className={viewMode === "grid" 
               ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" 
               : "space-y-2"
             }>
-              {filteredDocuments.map(doc => (
+              {persistedDocuments.map(doc => (
                 <Card 
                   key={doc.id}
-                  onClick={() => openDocument(doc)}
                   className={cn(
                     "cursor-pointer hover:border-blue-300 transition-colors overflow-hidden group",
                     viewMode === "list" && "border-0 shadow-none"
                   )}
+                  onClick={() => {
+                    // We would need a way to reopen the file
+                    // For now just show the toast
+                    toast({
+                      title: "Open document",
+                      description: `Opening ${doc.name}...`,
+                    });
+                  }}
                 >
                   <CardContent className={cn(
                     "p-0",
@@ -533,59 +506,233 @@ const Index = () => {
                     </div>
                     <div className={viewMode === "grid" ? "text-center w-full px-3" : "flex-1"}>
                       <div className="font-medium truncate max-w-full">{doc.name}</div>
-                      {viewMode === "list" ? (
-                        <div className="flex items-center justify-between">
-                          <div className="text-gray-500 text-xs">
-                            {formatDate(doc.createdAt)}
-                          </div>
-                          {doc.tags.length > 0 && (
-                            <div className="flex gap-1">
-                              {doc.tags.slice(0, 2).map(tag => (
-                                <span key={tag} className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
-                                  {tag}
-                                </span>
-                              ))}
-                              {doc.tags.length > 2 && (
-                                <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs rounded-full">
-                                  +{doc.tags.length - 2}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        doc.tags.length > 0 && (
-                          <div className="flex flex-wrap justify-center gap-1 mt-2">
-                            {doc.tags.slice(0, 2).map(tag => (
-                              <span key={tag} className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
-                                {tag}
-                              </span>
-                            ))}
-                            {doc.tags.length > 2 && (
-                              <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs rounded-full">
-                                +{doc.tags.length - 2}
-                              </span>
-                            )}
-                          </div>
-                        )
-                      )}
+                      <div className="text-gray-500 text-xs">
+                        {formatDate(new Date(doc.lastAccessed))}
+                      </div>
                     </div>
-                    {viewMode === "list" && (
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    )}
                   </CardContent>
                 </Card>
               ))}
             </div>
+          )}
+        </TabsContent>
+        
+        <TabsContent value="browser" className="mt-4">
+          {/* Breadcrumb Navigation */}
+          <div className="flex items-center mb-5 text-sm bg-gray-50 -mx-6 px-6 py-2">
+            <div className="flex items-center gap-1 flex-wrap">
+              {breadcrumbPath.map((folder, index) => (
+                <React.Fragment key={folder.id}>
+                  <button
+                    onClick={() => navigateToFolder(folder.id)}
+                    className={cn(
+                      "hover:text-blue-600 flex items-center",
+                      index === breadcrumbPath.length - 1 
+                        ? "font-medium text-blue-600" 
+                        : "text-gray-600"
+                    )}
+                  >
+                    {index === 0 && <Folder className="h-4 w-4 mr-1" />}
+                    {folder.name}
+                  </button>
+                  {index < breadcrumbPath.length - 1 && (
+                    <ChevronRight className="h-4 w-4 text-gray-400 mx-1" />
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
           </div>
-        )}
-      </div>
+          
+          {/* File Drop Zone */}
+          <div
+            className={cn(
+              "border-2 border-dashed transition-all rounded-lg flex flex-col items-center justify-center py-10 cursor-pointer mb-6",
+              dragActive 
+                ? "border-blue-500 bg-blue-50" 
+                : "border-gray-300 hover:bg-gray-50 hover:border-gray-400"
+            )}
+            onDrop={handleDrop}
+            onDragEnter={handleDrag}
+            onDragOver={handleDrag}
+            onDragLeave={handleDrag}
+            onClick={() => {
+              const input = document.getElementById("pdf-upload");
+              input && input.click();
+            }}
+          >
+            <div className="w-14 h-14 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mb-3">
+              <Upload className="w-7 h-7" />
+            </div>
+            <span className="text-lg text-gray-700 font-medium">
+              Drag & drop a PDF here
+            </span>
+            <p className="text-sm text-gray-500 mt-1">
+              or <span className="text-blue-600 hover:underline">browse</span> from your device
+            </p>
+            <input
+              id="pdf-upload"
+              type="file"
+              accept="application/pdf"
+              style={{ display: "none" }}
+              onChange={handleFileInput}
+            />
+          </div>
+          
+          {/* Document and Folder List */}
+          <div>
+            {currentSubfolders.length === 0 && filteredDocuments.length === 0 && (
+              <div className="text-center py-16 bg-gray-50 rounded-lg">
+                <Info className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                <p className="text-gray-600 font-medium">This folder is empty</p>
+                <p className="text-gray-500 text-sm mt-1">
+                  Upload documents or create a new folder to get started
+                </p>
+              </div>
+            )}
+            
+            {/* Folders */}
+            {currentSubfolders.length > 0 && (
+              <div className="mb-8">
+                <h3 className="text-sm font-medium text-gray-500 mb-3 flex items-center">
+                  <Folder className="h-4 w-4 mr-1" />
+                  Folders
+                </h3>
+                <div className={viewMode === "grid" 
+                  ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" 
+                  : "space-y-2"
+                }>
+                  {currentSubfolders.map(folder => (
+                    <Card 
+                      key={folder.id}
+                      onClick={() => navigateToFolder(folder.id)}
+                      className={cn(
+                        "cursor-pointer hover:border-blue-300 transition-colors overflow-hidden group",
+                        viewMode === "list" && "border-0 shadow-none"
+                      )}
+                    >
+                      <CardContent className={cn(
+                        "p-0",
+                        viewMode === "grid" 
+                          ? "flex flex-col items-center pt-6 pb-4"
+                          : "flex items-center p-3 hover:bg-gray-50 rounded-lg"
+                      )}>
+                        <div className={cn(
+                          "bg-amber-50 text-amber-600 rounded-lg flex items-center justify-center",
+                          viewMode === "grid" ? "w-16 h-16 mb-3" : "w-10 h-10 mr-3"
+                        )}>
+                          <Folder className={viewMode === "grid" ? "h-8 w-8" : "h-5 w-5"} />
+                        </div>
+                        <div className={viewMode === "grid" ? "text-center" : "flex-1"}>
+                          <div className="font-medium truncate max-w-full">{folder.name}</div>
+                          {viewMode === "list" && (
+                            <div className="text-gray-500 text-xs">Folder</div>
+                          )}
+                        </div>
+                        {viewMode === "list" && (
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Documents */}
+            {filteredDocuments.length > 0 && (
+              <div>
+                <h3 className="text-sm font-medium text-gray-500 mb-3 flex items-center">
+                  <FileText className="h-4 w-4 mr-1" />
+                  Documents
+                </h3>
+                <div className={viewMode === "grid" 
+                  ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" 
+                  : "space-y-2"
+                }>
+                  {filteredDocuments.map(doc => (
+                    <Card 
+                      key={doc.id}
+                      onClick={() => openDocument(doc)}
+                      className={cn(
+                        "cursor-pointer hover:border-blue-300 transition-colors overflow-hidden group",
+                        viewMode === "list" && "border-0 shadow-none"
+                      )}
+                    >
+                      <CardContent className={cn(
+                        "p-0",
+                        viewMode === "grid" 
+                          ? "flex flex-col items-center pt-6 pb-4"
+                          : "flex items-center p-3 hover:bg-gray-50 rounded-lg"
+                      )}>
+                        <div className={cn(
+                          "bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center",
+                          viewMode === "grid" ? "w-16 h-16 mb-3" : "w-10 h-10 mr-3"
+                        )}>
+                          <FileText className={viewMode === "grid" ? "h-8 w-8" : "h-5 w-5"} />
+                        </div>
+                        <div className={viewMode === "grid" ? "text-center w-full px-3" : "flex-1"}>
+                          <div className="font-medium truncate max-w-full">{doc.name}</div>
+                          {viewMode === "list" ? (
+                            <div className="flex items-center justify-between">
+                              <div className="text-gray-500 text-xs">
+                                {formatDate(doc.createdAt)}
+                              </div>
+                              {doc.tags.length > 0 && (
+                                <div className="flex gap-1">
+                                  {doc.tags.slice(0, 2).map(tag => (
+                                    <span key={tag} className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
+                                      {tag}
+                                    </span>
+                                  ))}
+                                  {doc.tags.length > 2 && (
+                                    <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs rounded-full">
+                                      +{doc.tags.length - 2}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            doc.tags.length > 0 && (
+                              <div className="flex flex-wrap justify-center gap-1 mt-2">
+                                {doc.tags.slice(0, 2).map(tag => (
+                                  <span key={tag} className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
+                                    {tag}
+                                  </span>
+                                ))}
+                                {doc.tags.length > 2 && (
+                                  <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs rounded-full">
+                                    +{doc.tags.length - 2}
+                                  </span>
+                                )}
+                              </div>
+                            )
+                          )}
+                        </div>
+                        {viewMode === "list" && (
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 

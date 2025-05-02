@@ -1,3 +1,4 @@
+
 // This module manages the storage and retrieval of annotations by page
 
 export type AnnotationType = 
@@ -78,6 +79,10 @@ export interface DocumentAnnotations {
 // In-memory store for the current document's annotations
 let currentAnnotations: DocumentAnnotations | null = null;
 
+// Auto-save timer reference
+let autoSaveTimer: number | null = null;
+const AUTO_SAVE_DELAY = 3000; // 3 seconds
+
 // Generate unique ID for annotations
 export const generateId = (): string => {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -91,7 +96,24 @@ export const initAnnotations = (documentId: string, fileName: string): DocumentA
     lastModified: new Date(),
     pages: {}
   };
+  
+  // Set up auto-save
+  setupAutoSave();
+  
   return currentAnnotations;
+};
+
+// Set up auto-save timer
+const setupAutoSave = () => {
+  // Clear any existing timer
+  if (autoSaveTimer !== null) {
+    clearInterval(autoSaveTimer);
+  }
+  
+  // Set up new auto-save timer
+  autoSaveTimer = window.setInterval(() => {
+    saveAnnotationsToStorage();
+  }, AUTO_SAVE_DELAY);
 };
 
 // Get all annotations for a specific page
@@ -149,8 +171,9 @@ export const getCurrentAnnotations = (): DocumentAnnotations | null => {
   return currentAnnotations;
 };
 
-// Local storage key for saving annotations
+// Local storage keys
 const ANNOTATION_STORAGE_KEY = 'pdf_annotations';
+const DOCUMENTS_STORAGE_KEY = 'pdf_documents';
 
 // Save annotations to localStorage
 export const saveAnnotationsToStorage = (): void => {
@@ -166,6 +189,9 @@ export const saveAnnotationsToStorage = (): void => {
     
     // Save back to localStorage
     localStorage.setItem(ANNOTATION_STORAGE_KEY, JSON.stringify(storedData));
+    
+    // Show save indicator (could be implemented in UI)
+    console.log('Annotations auto-saved at', new Date().toLocaleTimeString());
   } catch (error) {
     console.error('Failed to save annotations to localStorage:', error);
   }
@@ -180,6 +206,10 @@ export const loadAnnotationsFromStorage = (documentId: string, fileName: string)
     const storedData = JSON.parse(storedDataStr);
     if (storedData[documentId]) {
       currentAnnotations = storedData[documentId];
+      
+      // Set up auto-save for the loaded document
+      setupAutoSave();
+      
       return currentAnnotations;
     }
   } catch (error) {
@@ -188,6 +218,50 @@ export const loadAnnotationsFromStorage = (documentId: string, fileName: string)
   
   // If no stored annotations found, initialize new ones
   return initAnnotations(documentId, fileName);
+};
+
+// Save document metadata to localStorage
+export const saveDocumentMetadata = (document: {id: string; name: string; lastAccessed: Date}): void => {
+  try {
+    const storedDataStr = localStorage.getItem(DOCUMENTS_STORAGE_KEY);
+    const storedData = storedDataStr ? JSON.parse(storedDataStr) : {};
+    
+    // Update or add document metadata
+    storedData[document.id] = {
+      name: document.name,
+      lastAccessed: document.lastAccessed
+    };
+    
+    localStorage.setItem(DOCUMENTS_STORAGE_KEY, JSON.stringify(storedData));
+  } catch (error) {
+    console.error('Failed to save document metadata:', error);
+  }
+};
+
+// Get all stored document metadata
+export const getAllDocumentMetadata = (): {id: string; name: string; lastAccessed: Date}[] => {
+  try {
+    const storedDataStr = localStorage.getItem(DOCUMENTS_STORAGE_KEY);
+    if (!storedDataStr) return [];
+    
+    const storedData = JSON.parse(storedDataStr);
+    return Object.entries(storedData).map(([id, data]: [string, any]) => ({
+      id,
+      name: data.name,
+      lastAccessed: new Date(data.lastAccessed)
+    }));
+  } catch (error) {
+    console.error('Failed to get document metadata:', error);
+    return [];
+  }
+};
+
+// Clean up function to remove auto-save timer
+export const cleanup = () => {
+  if (autoSaveTimer !== null) {
+    clearInterval(autoSaveTimer);
+    autoSaveTimer = null;
+  }
 };
 
 // Export functions to allow importing elsewhere
@@ -201,5 +275,8 @@ export default {
   getCurrentAnnotations,
   saveAnnotationsToStorage,
   loadAnnotationsFromStorage,
+  saveDocumentMetadata,
+  getAllDocumentMetadata,
+  cleanup,
   generateId
 };
