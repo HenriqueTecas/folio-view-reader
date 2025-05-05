@@ -41,6 +41,7 @@ interface AnnotationToolbarProps {
   onBrushColorChange: (color: string) => void;
   opacity: number;
   onOpacityChange: (opacity: number) => void;
+  layout?: "horizontal" | "vertical"; // Add this line to include the layout property
 }
 
 const tools = [
@@ -72,10 +73,18 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
   onBrushColorChange,
   opacity,
   onOpacityChange,
+  layout = "vertical", // Default to vertical layout if not specified
 }) => {
+  const isHorizontal = layout === "horizontal";
+
   return (
-    <div className="flex flex-col gap-4 p-4 bg-white rounded-lg shadow-lg">
-      <div className="grid grid-cols-4 gap-2">
+    <div className={cn(
+      "flex gap-4 p-4 bg-white rounded-lg shadow-lg",
+      isHorizontal ? "flex-row items-center" : "flex-col"
+    )}>
+      <div className={cn(
+        isHorizontal ? "grid grid-cols-8 gap-2" : "grid grid-cols-4 gap-2"
+      )}>
         {tools.map(({ name, icon: Icon, label }) => (
           <Button
             key={name}
@@ -94,8 +103,14 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
       </div>
 
       {selectedTool && selectedTool !== "eraser" && (
-        <div className="space-y-4">
-          <div className="flex flex-wrap gap-2">
+        <div className={cn(
+          "space-y-4",
+          isHorizontal && "flex items-center gap-4 space-y-0"
+        )}>
+          <div className={cn(
+            "flex flex-wrap gap-2",
+            isHorizontal && "ml-2"
+          )}>
             {colors.map((color) => (
               <button
                 key={color}
@@ -109,7 +124,10 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
             ))}
           </div>
 
-          <div className="space-y-2">
+          <div className={cn(
+            "space-y-2",
+            isHorizontal && "w-32 ml-2 space-y-0"
+          )}>
             <label className="text-sm font-medium">Size</label>
             <Slider
               min={1}
@@ -120,7 +138,10 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
             />
           </div>
 
-          <div className="space-y-2">
+          <div className={cn(
+            "space-y-2",
+            isHorizontal && "w-32 ml-2 space-y-0"
+          )}>
             <label className="text-sm font-medium">Opacity</label>
             <Slider
               min={0.1}
